@@ -1,0 +1,2150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF-视频显示器</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        /* 基础样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* 导航栏样式 */
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+        }
+
+        .navbar .nav-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .navbar .nav-controls {
+            display: flex;
+            gap: 15px;
+        }
+
+        /* 按钮样式 */
+        .upload-btn,
+        .control-btn,
+        .preview-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .upload-btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .upload-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .preview-btn {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        .preview-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(40, 167, 69, 0.6);
+        }
+
+        .preview-btn.active {
+            background: linear-gradient(45deg, #dc3545, #c82333);
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+            }
+
+            50% {
+                box-shadow: 0 4px 25px rgba(220, 53, 69, 0.6);
+            }
+
+            100% {
+                box-shadow: 0 4px 15px rgba(220, 53, 69, 0.4);
+            }
+        }
+
+        .control-btn {
+            background: #f8f9fa;
+            color: #333;
+            border: 1px solid #dee2e6;
+        }
+
+        .control-btn:hover {
+            background: #e9ecef;
+            transform: translateY(-1px);
+        }
+
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .fullscreen-btn {
+            background: linear-gradient(45deg, #17a2b8, #138496);
+            color: white;
+            box-shadow: 0 4px 15px rgba(23, 162, 184, 0.4);
+            font-size: 16px;
+            padding: 10px 15px;
+        }
+
+        .fullscreen-btn:hover {
+            background: linear-gradient(45deg, #138496, #117a8b);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(23, 162, 184, 0.6);
+        }
+
+        /* PPT容器样式 */
+        .ppt-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 10px;
+            height: calc(100vh - 80px);
+            /* 减去导航栏高度 */
+            min-height: 600px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .ppt-viewer {
+            flex: 1;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            position: relative;
+            min-height: 500px;
+            width: 100%;
+        }
+
+        .ppt-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+        }
+
+        .ppt-placeholder .placeholder-content {
+            text-align: center;
+            color: #666;
+        }
+
+        .ppt-placeholder .placeholder-content h2 {
+            margin-bottom: 15px;
+            font-size: 28px;
+            color: #333;
+        }
+
+        .ppt-placeholder .placeholder-content p {
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+
+        .ppt-placeholder .placeholder-content .format-tip {
+            font-size: 14px;
+            color: #28a745;
+            margin-bottom: 30px;
+            font-weight: 500;
+            background: rgba(40, 167, 69, 0.1);
+            padding: 8px 12px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+
+        .ppt-slide {
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+
+        .ppt-slide.active {
+            display: block;
+        }
+
+        .ppt-slide img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: white;
+        }
+
+        .ppt-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 25px;
+            border-radius: 50px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+            flex-shrink: 0;
+            height: 50px;
+            transition: all 0.3s ease;
+        }
+
+        /* 全屏模式下的PPT控制栏样式 */
+        .ppt-container.fullscreen .ppt-controls {
+            position: fixed;
+            bottom: -45px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            border-radius: 25px 25px 0 0;
+            padding: 15px 30px 20px 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            z-index: 1001;
+            transition: bottom 0.3s ease;
+        }
+
+        .ppt-container.fullscreen .ppt-controls:hover {
+            bottom: 0px;
+        }
+
+        /* 全屏模式下的控制按钮样式 */
+        .ppt-container.fullscreen .ppt-controls .control-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .ppt-container.fullscreen .ppt-controls .control-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .ppt-container.fullscreen .ppt-controls .slide-counter {
+            color: white;
+        }
+
+        .ppt-controls .slide-counter {
+            font-size: 16px;
+            font-weight: 500;
+            color: #333;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        /* 悬浮视频窗口样式 */
+        .video-window {
+            position: fixed;
+            top: 100px;
+            right: 30px;
+            width: 350px;
+            height: 220px;
+            background: #000;
+            border-radius: 8px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+            z-index: 1001;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            display: none;
+            resize: both;
+            min-width: 200px;
+            min-height: 150px;
+            max-width: 1200px;
+            max-height: 800px;
+            border: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        /* 全屏预览时的视频窗口样式 */
+        .video-window.fullscreen-preview {
+            position: absolute !important;
+            z-index: 1000 !important;
+            border-radius: 12px !important;
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.5) !important;
+            border: 2px solid rgba(255, 255, 255, 0.2) !important;
+            display: block !important;
+            resize: both !important;
+            min-width: 200px !important;
+            min-height: 150px !important;
+            max-width: 80vw !important;
+            max-height: 80vh !important;
+        }
+
+        .video-window.fullscreen-preview .video-controls {
+            opacity: 0;
+        }
+
+        .video-window.fullscreen-preview:hover .video-controls {
+            opacity: 1;
+        }
+
+        .video-window:hover {
+            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.4);
+        }
+
+        .video-window.minimized {
+            height: 40px;
+            resize: none;
+        }
+
+
+        .video-window.dragging {
+            transform: scale(1.02);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        }
+
+        .video-header {
+            position: absolute;
+            top: 0;
+            right: 0;
+            padding: 8px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            border: none;
+            z-index: 10;
+        }
+
+        .video-header .video-controls {
+            display: flex;
+            gap: 5px;
+            flex-shrink: 0;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: auto;
+        }
+
+        .video-window:hover .video-controls {
+            opacity: 1;
+        }
+
+        .video-header .video-controls button {
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-backdrop-filter: blur(10px);
+            backdrop-filter: blur(10px);
+        }
+
+        .video-header .video-controls button:hover {
+            background: rgba(0, 0, 0, 0.8);
+            transform: scale(1.1);
+        }
+
+        .video-header .video-controls .close-btn:hover {
+            background: rgba(255, 0, 0, 0.8);
+        }
+
+        .video-header .video-controls .drag-btn {
+            cursor: grab;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .video-header .video-controls .drag-btn:hover {
+            background: rgba(0, 0, 0, 0.8);
+            cursor: grabbing;
+        }
+
+        .video-window video {
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
+            background: #000;
+            outline: none;
+            border: none;
+            display: block;
+            object-fit: contain;
+        }
+
+        .video-window video:focus {
+            outline: none;
+        }
+
+        /* 模态框样式 */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            -webkit-backdrop-filter: blur(5px);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: modalSlideIn 0.3s ease;
+        }
+
+        .modal-header {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            font-size: 20px;
+        }
+
+        .modal-header .close-btn {
+            width: 30px;
+            height: 30px;
+            border: none;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+            transition: all 0.2s ease;
+        }
+
+        .modal-header .close-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+
+        .modal-body {
+            padding: 25px;
+        }
+
+        .upload-area {
+            border: 2px dashed #ddd;
+            border-radius: 12px;
+            padding: 40px 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: rgba(102, 126, 234, 0.05);
+        }
+
+        .upload-area input[type="file"] {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .upload-text p {
+            margin-bottom: 10px;
+        }
+
+        .upload-text p:first-child {
+            font-size: 18px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .upload-text .upload-hint {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .file-list {
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-item .file-name {
+            font-size: 14px;
+            color: #333;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-item .file-remove {
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .file-item .file-remove:hover {
+            background: #c82333;
+        }
+
+        /* 动画 */
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px) scale(0.95);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .navbar {
+                padding: 10px 20px;
+            }
+
+            .navbar .nav-title {
+                font-size: 20px;
+            }
+
+            .navbar .nav-controls {
+                gap: 10px;
+            }
+
+            .ppt-container {
+                padding: 15px;
+            }
+
+            .video-window {
+                width: 300px;
+                height: 200px;
+                right: 15px;
+                top: 80px;
+            }
+
+            .modal .modal-content {
+                width: 95%;
+            }
+
+            .modal-header {
+                padding: 15px 20px;
+            }
+
+            .modal-body {
+                padding: 20px;
+            }
+        }
+
+        /* 文件输入标签样式 */
+        .file-input-label {
+            display: block;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-label input[type="file"] {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        /* 拖拽悬停状态 */
+        .upload-area.dragover {
+            border-color: #007bff;
+            background: rgba(0, 123, 255, 0.1);
+            transform: scale(1.02);
+        }
+
+        /* 文件列表样式 */
+        .file-list {
+            margin-top: 20px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 15px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+            gap: 10px;
+        }
+
+        .file-item:hover {
+            background: rgba(255, 255, 255, 1);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .file-item span {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .file-item .file-size {
+            font-size: 12px;
+            color: #666;
+            font-weight: normal;
+        }
+
+        .file-item .file-type {
+            font-size: 12px;
+            color: #ff6b6b;
+            font-weight: bold;
+            background: rgba(255, 107, 107, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+
+        /* 上传提示样式 */
+        .upload-alert {
+            margin-top: 15px;
+            padding: 15px;
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            color: #856404;
+        }
+
+        .upload-alert .alert-content h4 {
+            margin-bottom: 10px;
+            color: #856404;
+            font-size: 16px;
+        }
+
+        .upload-alert .alert-content p {
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+
+        .upload-alert .alert-content ul {
+            margin-left: 20px;
+            line-height: 1.6;
+        }
+
+        .upload-alert .alert-content li {
+            margin-bottom: 5px;
+        }
+
+        /* PPTX查看器样式 */
+        .viewer-selector {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .viewer-selector h3 {
+            margin-bottom: 30px;
+            color: #333;
+            font-size: 24px;
+        }
+
+        .viewer-options {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .viewer-btn {
+            padding: 15px 25px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            min-width: 150px;
+        }
+
+        .viewer-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .viewer-note {
+            font-size: 12px;
+            color: #666;
+            font-style: italic;
+            margin-top: 15px;
+        }
+
+        /* 查看器内容样式 */
+        .office-viewer,
+        .google-viewer {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .viewer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            background: rgba(255, 255, 255, 0.9);
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .viewer-header h4 {
+            margin: 0;
+            color: #333;
+            font-size: 18px;
+        }
+
+        .back-btn {
+            padding: 8px 16px;
+            background: #6c757d;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s ease;
+        }
+
+        .back-btn:hover {
+            background: #5a6268;
+        }
+
+        .viewer-content {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        .viewer-content p {
+            margin-bottom: 15px;
+            color: #333;
+            font-size: 16px;
+            line-height: 1.6;
+        }
+
+        .viewer-content ol {
+            margin: 20px 0;
+            text-align: left;
+            max-width: 400px;
+        }
+
+        .viewer-content li {
+            margin-bottom: 10px;
+            color: #555;
+            line-height: 1.5;
+        }
+
+        .download-btn {
+            padding: 12px 30px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            margin-top: 20px;
+            transition: all 0.3s ease;
+        }
+
+        .download-btn:hover {
+            background: #218838;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+        }
+
+        /* 隐藏样式 */
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- 导航栏 -->
+        <nav class="navbar">
+            <div class="nav-title">PDF-视频显示器</div>
+            <div class="nav-controls">
+                <button class="upload-btn" onclick="openPPTUpload()">上传PDF</button>
+                <button class="upload-btn" onclick="openVideoUpload()">上传视频</button>
+                <button class="preview-btn" onclick="togglePreview()">预览</button>
+            </div>
+        </nav>
+
+        <!-- PPT展示区域 -->
+        <div class="ppt-container">
+            <div class="ppt-viewer" id="pptViewer">
+                <div class="ppt-placeholder">
+                    <div class="placeholder-content">
+                        <h2>请上传PDF文件</h2>
+                        <p>支持格式：图片（JPG, PNG, GIF）、PDF（可翻页）</p>
+                        <p class="format-tip">💡 暂不支持PPTX、PPT格式，请将PPT另存为PDF格式</p>
+                        <button class="upload-btn" onclick="openPPTUpload()">选择PDF文件</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PPT控制栏 -->
+            <div class="ppt-controls">
+                <button class="control-btn" onclick="previousSlide()">上一页</button>
+                <span class="slide-counter">
+                    <span id="currentSlide">1</span> / <span id="totalSlides">1</span>
+                </span>
+                <button class="control-btn" onclick="nextSlide()">下一页</button>
+                <!-- <button class="control-btn fullscreen-btn" onclick="toggleFullscreenPreview()" title="全屏预览">⛶</button> -->
+            </div>
+
+            <!-- 悬浮视频窗口 -->
+            <div class="video-window" id="videoWindow">
+                <div class="video-header">
+                    <div class="video-controls">
+                        <button class="drag-btn" title="拖动">⋮⋮</button>
+                        <button class="minimize-btn" onclick="toggleVideoSize()">-</button>
+                        <button class="close-btn" onclick="closeVideo()">×</button>
+                    </div>
+                </div>
+                <video id="lectureVideo" controls>
+                    <source src="" type="video/mp4">
+                    您的浏览器不支持视频播放。
+                </video>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件上传模态框 -->
+    <div class="modal" id="uploadModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">上传文件</h3>
+                <button class="close-btn" onclick="closeModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="upload-area" id="uploadArea">
+                    <label for="fileInput" class="file-input-label">
+                        <input type="file" id="fileInput" multiple accept="" onchange="handleFileUpload(event)">
+                        <div class="upload-text">
+                            <p>拖拽文件到这里或点击选择</p>
+                            <p class="upload-hint">支持多个文件上传，包括图片、PPTX、PPT、PDF</p>
+                        </div>
+                    </label>
+                </div>
+                <div class="file-list" id="fileList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let pptImages = [];
+        let currentSlideIndex = 0;
+        let isVideoMinimized = false;
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+        let pdfDocument = null;
+        let isPdfMode = false;
+        let isPreviewMode = false;
+        let previewInterval = null;
+
+        // 打开PPT上传模态框
+        function openPPTUpload() {
+            const modal = document.getElementById('uploadModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const fileInput = document.getElementById('fileInput');
+            const uploadHint = document.querySelector('.upload-hint');
+
+            modalTitle.textContent = '上传PDF文件';
+            fileInput.accept = 'image/*,.pdf';
+            fileInput.setAttribute('data-type', 'ppt');
+            fileInput.multiple = true; // PDF支持多文件上传
+
+            // 更新上传提示
+            uploadHint.textContent = '支持多个文件上传，包括图片、PDF（PDF最大500MB）';
+
+            modal.style.display = 'flex';
+        }
+
+        // 打开视频上传模态框
+        function openVideoUpload() {
+            const modal = document.getElementById('uploadModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const fileInput = document.getElementById('fileInput');
+            const uploadHint = document.querySelector('.upload-hint');
+
+            modalTitle.textContent = '上传视频文件';
+            fileInput.accept = 'video/*,.mp4,.mov,.avi,.mkv,.wmv,.flv,.webm';
+            fileInput.setAttribute('data-type', 'video');
+            fileInput.multiple = false; // 视频只支持单文件上传
+
+            // 更新上传提示
+            uploadHint.textContent = '支持视频格式：MP4, MOV, AVI, MKV, WMV, FLV, WebM（最大2GB）';
+
+            modal.style.display = 'flex';
+        }
+
+        // 关闭模态框
+        function closeModal() {
+            const modal = document.getElementById('uploadModal');
+            const fileList = document.getElementById('fileList');
+            modal.style.display = 'none';
+            fileList.innerHTML = '';
+        }
+
+        // 处理文件上传
+        function handleFileUpload(event) {
+            const files = event.target.files;
+            const fileType = event.target.getAttribute('data-type');
+            const fileList = document.getElementById('fileList');
+
+            fileList.innerHTML = '';
+
+            if (fileType === 'ppt') {
+                handlePPTUpload(files);
+            } else if (fileType === 'video') {
+                handleVideoUpload(files);
+            }
+        }
+
+        // 处理PPT文件上传
+        function handlePPTUpload(files) {
+            pptImages = [];
+            const fileList = document.getElementById('fileList');
+            let imageFiles = [];
+            let pptxFiles = [];
+
+            Array.from(files).forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+
+                if (file.type.startsWith('image/')) {
+                    imageFiles.push(file);
+                    fileItem.innerHTML = `
+                <span>${file.name}</span>
+                <span class="file-size">${(file.size / 1024).toFixed(1)}KB</span>
+            `;
+                } else if (file.name.endsWith('.pptx') || file.name.endsWith('.ppt') || file.type.includes('powerpoint')) {
+                    // 暂不支持PPT格式
+                    fileItem.innerHTML = `
+                 <span>${file.name}</span>
+                 <span class="file-size">${(file.size / 1024 / 1024).toFixed(1)}MB</span>
+                 <span class="file-type">暂不支持</span>
+             `;
+                } else if (file.type === 'application/pdf') {
+                    // PDF文件处理
+                    handlePDFFile(file);
+                    fileItem.innerHTML = `
+                 <span>${file.name}</span>
+                 <span class="file-size">${(file.size / 1024 / 1024).toFixed(1)}MB</span>
+                 <span class="file-type">PDF文件</span>
+             `;
+                } else {
+                    fileItem.innerHTML = `
+                <span>${file.name}</span>
+                <span class="file-size">${(file.size / 1024).toFixed(1)}KB</span>
+                <span class="file-type">不支持的格式</span>
+            `;
+                }
+
+                fileList.appendChild(fileItem);
+            });
+
+            // 处理图片文件
+            if (imageFiles.length > 0) {
+                imageFiles.forEach((file, index) => {
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        pptImages.push({
+                            src: e.target.result,
+                            name: file.name
+                        });
+
+                        // 如果是最后一个图片文件，显示PPT
+                        if (pptImages.length === imageFiles.length) {
+                            displayPPT();
+                            setTimeout(() => {
+                                closeModal();
+                            }, 1000);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            // 如果没有任何可处理的文件，显示提示
+            if (imageFiles.length === 0) {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'upload-alert';
+                alertDiv.innerHTML = `
+             <div class="alert-content">
+                 <h4>⚠️ 不支持的文件格式</h4>
+                 <p>请上传以下格式的文件：</p>
+                 <ul>
+                     <li>图片文件：JPG, PNG, GIF</li>
+                     <li>PDF文件：PDF</li>
+                     <li>暂不支持：PPTX, PPT格式</li>
+                 </ul>
+             </div>
+         `;
+                fileList.appendChild(alertDiv);
+            }
+        }
+
+        // 处理视频上传
+        function handleVideoUpload(files) {
+            const file = files[0];
+            const fileList = document.getElementById('fileList');
+
+            if (!file) {
+                alert('请选择视频文件');
+                return;
+            }
+
+            // 检查文件类型
+            if (!file.type.startsWith('video/')) {
+                alert('请选择视频文件格式');
+                return;
+            }
+
+            // 检查文件大小（限制为2GB）
+            const maxSize = 2 * 1024 * 1024 * 1024; // 2GB
+            if (file.size > maxSize) {
+                alert('视频文件大小不能超过2GB');
+                return;
+            }
+
+            // 显示文件信息
+            const fileItem = document.createElement('div');
+            fileItem.className = 'file-item';
+            fileItem.innerHTML = `
+        <span>${file.name}</span>
+        <span class="file-size">${(file.size / 1024 / 1024).toFixed(1)}MB</span>
+        <span class="file-type">正在加载...</span>
+    `;
+            fileList.appendChild(fileItem);
+
+            // 创建视频URL
+            const videoURL = URL.createObjectURL(file);
+
+            const video = document.getElementById('lectureVideo');
+            const videoWindow = document.getElementById('videoWindow');
+
+            // 设置视频源
+            video.src = videoURL;
+            videoWindow.style.display = 'block';
+
+            // 监听视频加载事件
+            video.addEventListener('loadedmetadata', function () {
+                const duration = Math.floor(video.duration);
+                const minutes = Math.floor(duration / 60);
+                const seconds = duration % 60;
+
+                // 更新文件信息
+                const fileTypeSpan = fileItem.querySelector('.file-type');
+                fileTypeSpan.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                fileTypeSpan.style.color = '#28a745';
+
+                console.log('视频加载成功，时长:', `${minutes}:${seconds.toString().padStart(2, '0')}`);
+            });
+
+            // 监听视频加载错误
+            video.addEventListener('error', function () {
+                alert('视频加载失败，请检查文件格式');
+                const fileTypeSpan = fileItem.querySelector('.file-type');
+                fileTypeSpan.textContent = '加载失败';
+                fileTypeSpan.style.color = '#dc3545';
+            });
+
+            // 初始化视频窗口拖拽功能
+            initVideoWindow();
+
+            // 延迟关闭模态框
+            setTimeout(() => {
+                closeModal();
+            }, 1500);
+        }
+
+        // 处理PDF文件
+        function handlePDFFile(file) {
+            // 检查文件大小（限制为500MB）
+            const maxSize = 500 * 1024 * 1024; // 500MB
+            if (file.size > maxSize) {
+                alert('PDF文件大小不能超过500MB');
+                return;
+            }
+
+            const fileURL = URL.createObjectURL(file);
+
+            // 设置PDF.js的worker
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+            // 加载PDF
+            pdfjsLib.getDocument(fileURL).promise.then(function (pdf) {
+                pdfDocument = pdf;
+                isPdfMode = true;
+                currentSlideIndex = 0;
+
+                // 显示PDF
+                displayPDF();
+
+                // 关闭上传模态框
+                setTimeout(() => {
+                    closeModal();
+                }, 500);
+            }).catch(function (error) {
+                console.error('PDF加载失败:', error);
+                alert('PDF文件加载失败，请检查文件是否损坏');
+            });
+        }
+
+        // 处理PPTX文件
+        function processPPTXFiles(pptxFiles) {
+            const file = pptxFiles[0]; // 取第一个PPTX文件
+
+            // 创建临时URL
+            const fileURL = URL.createObjectURL(file);
+
+            // 显示PPTX文件
+            displayPPTX(fileURL, file.name);
+        }
+
+        // 显示PPTX文件
+        function displayPPTX(fileURL, fileName) {
+            const pptViewer = document.getElementById('pptViewer');
+            pptViewer.innerHTML = '';
+
+            // 创建选择器让用户选择查看方式
+            const viewerSelector = document.createElement('div');
+            viewerSelector.className = 'viewer-selector';
+            viewerSelector.innerHTML = `
+        <h3>选择查看方式</h3>
+        <div class="viewer-options">
+            <button class="viewer-btn" onclick="showOfficeViewer('${fileURL}', '${fileName}')">
+                Office Online 查看
+            </button>
+            <button class="viewer-btn" onclick="showGoogleViewer('${fileURL}', '${fileName}')">
+                Google Docs 查看
+            </button>
+            <button class="viewer-btn" onclick="showDownloadOption('${fileURL}', '${fileName}')">
+                下载查看
+            </button>
+        </div>
+        <p class="viewer-note">注意：在线查看器需要将文件上传到第三方服务</p>
+    `;
+
+            pptViewer.appendChild(viewerSelector);
+
+            // 更新页码显示
+            document.getElementById('currentSlide').textContent = '1';
+            document.getElementById('totalSlides').textContent = '1';
+        }
+
+        // 使用Office Online查看器
+        function showOfficeViewer(fileURL, fileName) {
+            const pptViewer = document.getElementById('pptViewer');
+            pptViewer.innerHTML = `
+        <div class="office-viewer">
+            <div class="viewer-header">
+                <h4>${fileName}</h4>
+                <button class="back-btn" onclick="location.reload()">返回</button>
+            </div>
+            <div class="viewer-content">
+                <p>正在准备Office Online查看器...</p>
+                <p>由于浏览器安全限制，请选择以下方式：</p>
+                <ol>
+                    <li>下载文件到本地查看</li>
+                    <li>上传到OneDrive后使用Office Online</li>
+                    <li>使用本地Office软件打开</li>
+                </ol>
+                <button class="download-btn" onclick="downloadFile('${fileURL}', '${fileName}')">
+                    下载文件
+                </button>
+            </div>
+        </div>
+    `;
+        }
+
+        // 使用Google Docs查看器
+        function showGoogleViewer(fileURL, fileName) {
+            const pptViewer = document.getElementById('pptViewer');
+            pptViewer.innerHTML = `
+        <div class="google-viewer">
+            <div class="viewer-header">
+                <h4>${fileName}</h4>
+                <button class="back-btn" onclick="location.reload()">返回</button>
+            </div>
+            <div class="viewer-content">
+                <p>正在准备Google Docs查看器...</p>
+                <p>由于浏览器安全限制，请选择以下方式：</p>
+                <ol>
+                    <li>下载文件到本地查看</li>
+                    <li>上传到Google Drive后分享查看</li>
+                    <li>使用本地Office软件打开</li>
+                </ol>
+                <button class="download-btn" onclick="downloadFile('${fileURL}', '${fileName}')">
+                    下载文件
+                </button>
+            </div>
+        </div>
+    `;
+        }
+
+        // 显示下载选项
+        function showDownloadOption(fileURL, fileName) {
+            downloadFile(fileURL, fileName);
+        }
+
+        // 下载文件
+        function downloadFile(fileURL, fileName) {
+            const a = document.createElement('a');
+            a.href = fileURL;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // 显示PDF
+        function displayPDF() {
+            if (!pdfDocument) return;
+
+            const pptViewer = document.getElementById('pptViewer');
+
+            // 检查是否已有canvas容器，如果没有才创建
+            let canvasContainer = pptViewer.querySelector('.pdf-canvas-container');
+            if (!canvasContainer) {
+                pptViewer.innerHTML = '';
+
+                // 强制刷新容器尺寸
+                pptViewer.style.display = 'flex';
+                pptViewer.style.width = '100%';
+                pptViewer.style.height = '100%';
+
+                // 创建canvas容器
+                canvasContainer = document.createElement('div');
+                canvasContainer.className = 'pdf-canvas-container';
+                canvasContainer.style.width = '100%';
+                canvasContainer.style.height = '100%';
+                canvasContainer.style.display = 'flex';
+                canvasContainer.style.alignItems = 'center';
+                canvasContainer.style.justifyContent = 'center';
+                canvasContainer.style.overflow = 'visible';
+                canvasContainer.style.position = 'relative';
+                canvasContainer.style.padding = '0';
+                canvasContainer.style.margin = '0';
+
+                pptViewer.appendChild(canvasContainer);
+            }
+
+            // 等待DOM更新，然后获取实际尺寸
+            setTimeout(() => {
+                const containerWidth = canvasContainer.offsetWidth;
+                const containerHeight = canvasContainer.offsetHeight;
+
+                console.log('Container dimensions:', containerWidth, 'x', containerHeight);
+
+                // 检查是否已有canvas，如果有则复用
+                let canvas = canvasContainer.querySelector('canvas');
+                if (!canvas) {
+                    canvas = document.createElement('canvas');
+                    canvasContainer.appendChild(canvas);
+                }
+                const ctx = canvas.getContext('2d');
+
+                // 获取当前页面
+                pdfDocument.getPage(currentSlideIndex + 1).then(function (page) {
+                    const viewport = page.getViewport({ scale: 1 });
+
+                    // 计算缩放比例 - 全屏模式下优先撑满
+                    const scaleX = containerWidth / viewport.width;
+                    const scaleY = containerHeight / viewport.height;
+
+                    let scale;
+                    let isWidthFit = false;
+
+                    if (isPreviewMode) {
+                        // 全屏预览模式下确保内容完全显示在容器内
+                        // 选择较小的缩放比例，确保内容不会超出边界
+                        if (scaleX < scaleY) {
+                            scale = scaleX * 0.95; // 宽度适配，留5%边距
+                            isWidthFit = true;
+                        } else {
+                            scale = scaleY * 0.95; // 高度适配，留5%边距
+                            isWidthFit = false;
+                        }
+                    } else {
+                        // 正常模式下智能适配
+                        const widthBasedScale = scaleX * 0.98;
+                        const widthBasedHeight = viewport.height * widthBasedScale;
+
+                        if (widthBasedHeight <= containerHeight) {
+                            scale = widthBasedScale;
+                            isWidthFit = true;
+                        } else {
+                            scale = scaleY * 0.98;
+                            isWidthFit = false;
+                        }
+                    }
+
+                    const scaledViewport = page.getViewport({ scale: scale });
+
+                    // 设置canvas尺寸
+                    canvas.width = scaledViewport.width;
+                    canvas.height = scaledViewport.height;
+
+                    // 根据适配方式设置canvas样式
+                    if (isPreviewMode) {
+                        // 全屏预览模式下居中显示，确保内容完全可见
+                        canvas.style.width = scaledViewport.width + 'px';
+                        canvas.style.height = scaledViewport.height + 'px';
+                        canvas.style.objectFit = 'none';
+                        canvas.style.objectPosition = 'center center';
+                        canvas.style.display = 'block';
+                        canvas.style.margin = '0';
+                        canvas.style.padding = '0';
+                        canvas.style.position = 'absolute';
+                        canvas.style.top = '50%';
+                        canvas.style.left = '50%';
+                        canvas.style.transform = 'translate(-50%, -50%)';
+                        canvas.style.maxWidth = '100%';
+                        canvas.style.maxHeight = '100%';
+                    } else if (isWidthFit) {
+                        // 横向撑满
+                        canvas.style.width = '100%';
+                        canvas.style.height = 'auto';
+                        canvas.style.display = 'block';
+                        canvas.style.maxWidth = '100%';
+                        canvas.style.maxHeight = '100%';
+                        canvas.style.objectFit = 'contain';
+                    } else {
+                        // 高度适配，保持比例
+                        canvas.style.width = scaledViewport.width + 'px';
+                        canvas.style.height = scaledViewport.height + 'px';
+                        canvas.style.display = 'block';
+                        canvas.style.maxWidth = '100%';
+                        canvas.style.maxHeight = '100%';
+                        canvas.style.objectFit = 'contain';
+                    }
+
+                    // 确保不出现滚轮且居中显示
+                    if (isPreviewMode) {
+                        // 全屏预览模式下确保内容完全显示
+                        canvasContainer.style.overflow = 'hidden';
+                        canvasContainer.style.alignItems = 'center';
+                        canvasContainer.style.justifyContent = 'center';
+                        canvasContainer.style.padding = '0';
+                        canvasContainer.style.margin = '0';
+                        canvasContainer.style.boxSizing = 'border-box';
+                        canvasContainer.style.width = '100vw';
+                        canvasContainer.style.height = '100vh';
+                        canvasContainer.style.position = 'absolute';
+                        canvasContainer.style.top = '0';
+                        canvasContainer.style.left = '0';
+                        canvasContainer.style.display = 'flex';
+
+                        // 添加淡入效果减少闪动
+                        canvas.style.opacity = '0';
+                        canvas.style.transition = 'opacity 0.2s ease-in-out';
+                        setTimeout(() => {
+                            canvas.style.opacity = '1';
+                        }, 50);
+                    } else {
+                        // 正常模式下居中显示
+                        canvasContainer.style.overflow = 'hidden';
+                        canvasContainer.style.alignItems = 'center';
+                        canvasContainer.style.justifyContent = 'center';
+                        canvasContainer.style.padding = '0';
+                        canvasContainer.style.margin = '0';
+                        canvasContainer.style.boxSizing = 'border-box';
+                        canvasContainer.style.width = '100%';
+                        canvasContainer.style.height = '100%';
+                        canvasContainer.style.position = 'relative';
+                    }
+
+                    console.log('PDF dimensions:', scaledViewport.width, 'x', scaledViewport.height);
+                    console.log('Container dimensions:', containerWidth, 'x', containerHeight);
+                    console.log('Canvas style:', canvas.style.width, canvas.style.height);
+
+                    // 渲染页面
+                    const renderContext = {
+                        canvasContext: ctx,
+                        viewport: scaledViewport
+                    };
+
+                    page.render(renderContext).promise.then(function () {
+                        // 更新页码
+                        updateSlideCounter();
+
+                        console.log('PDF rendered at scale:', scale);
+                    });
+                });
+            }, 100);
+        }
+
+        // 显示PPT
+        function displayPPT() {
+            if (isPdfMode) {
+                displayPDF();
+                return;
+            }
+
+            if (pptImages.length === 0) return;
+
+            const pptViewer = document.getElementById('pptViewer');
+            pptViewer.innerHTML = '';
+
+            const imgElement = document.createElement('img');
+            imgElement.src = pptImages[currentSlideIndex].src;
+            imgElement.alt = `幻灯片 ${currentSlideIndex + 1}`;
+            imgElement.style.width = '100%';
+            imgElement.style.height = '100%';
+            imgElement.style.objectFit = 'contain';
+
+            pptViewer.appendChild(imgElement);
+
+            // 更新页码
+            updateSlideCounter();
+        }
+
+        // 更新幻灯片计数器
+        function updateSlideCounter() {
+            const currentSlide = document.getElementById('currentSlide');
+            const totalSlides = document.getElementById('totalSlides');
+
+            currentSlide.textContent = currentSlideIndex + 1;
+
+            if (isPdfMode && pdfDocument) {
+                totalSlides.textContent = pdfDocument.numPages;
+            } else {
+                totalSlides.textContent = pptImages.length;
+            }
+        }
+
+        // 上一页
+        function previousSlide() {
+            if (isPdfMode && pdfDocument) {
+                if (currentSlideIndex > 0) {
+                    currentSlideIndex--;
+                    displayPDF();
+                }
+            } else if (pptImages.length > 0) {
+                currentSlideIndex = (currentSlideIndex - 1 + pptImages.length) % pptImages.length;
+                displayPPT();
+            }
+        }
+
+        // 下一页
+        function nextSlide() {
+            if (isPdfMode && pdfDocument) {
+                if (currentSlideIndex < pdfDocument.numPages - 1) {
+                    currentSlideIndex++;
+                    displayPDF();
+                }
+            } else if (pptImages.length > 0) {
+                currentSlideIndex = (currentSlideIndex + 1) % pptImages.length;
+                displayPPT();
+            }
+        }
+
+        // 切换视频窗口大小
+        function toggleVideoSize() {
+            const videoWindow = document.getElementById('videoWindow');
+            const video = document.getElementById('lectureVideo');
+            const minimizeBtn = document.querySelector('.minimize-btn');
+
+            if (isVideoMinimized) {
+                // 恢复到正常大小
+                videoWindow.style.width = '350px';
+                videoWindow.style.height = '220px';
+                video.style.display = 'block';
+                minimizeBtn.textContent = '−';
+                isVideoMinimized = false;
+            } else {
+                // 最小化
+                videoWindow.style.width = '200px';
+                videoWindow.style.height = '40px';
+                video.style.display = 'none';
+                minimizeBtn.textContent = '□';
+                isVideoMinimized = true;
+            }
+        }
+
+        // 关闭视频窗口
+        function closeVideo() {
+            const videoWindow = document.getElementById('videoWindow');
+            const video = document.getElementById('lectureVideo');
+
+            videoWindow.style.display = 'none';
+            video.pause();
+            video.src = '';
+        }
+
+        // 视频窗口初始化
+        function initVideoWindow() {
+            const videoWindow = document.getElementById('videoWindow');
+            const dragBtn = document.querySelector('.drag-btn');
+
+            // 拖动按钮事件
+            dragBtn.addEventListener('mousedown', function (e) {
+                isDragging = true;
+                const rect = videoWindow.getBoundingClientRect();
+                dragOffset.x = e.clientX - rect.left;
+                dragOffset.y = e.clientY - rect.top;
+
+                dragBtn.style.cursor = 'grabbing';
+                videoWindow.classList.add('dragging');
+
+                // 阻止默认行为
+                e.preventDefault();
+            });
+
+            // 鼠标移动事件
+            document.addEventListener('mousemove', function (e) {
+                if (!isDragging) return;
+
+                const newLeft = e.clientX - dragOffset.x;
+                const newTop = e.clientY - dragOffset.y;
+
+                // 获取当前视口大小
+                const viewportWidth = window.innerWidth;
+                const viewportHeight = window.innerHeight;
+                
+                // 限制在视口内
+                const maxLeft = viewportWidth - videoWindow.offsetWidth;
+                const maxTop = viewportHeight - videoWindow.offsetHeight;
+
+                const constrainedLeft = Math.max(0, Math.min(newLeft, maxLeft));
+                const constrainedTop = Math.max(0, Math.min(newTop, maxTop));
+
+                videoWindow.style.left = constrainedLeft + 'px';
+                videoWindow.style.top = constrainedTop + 'px';
+                videoWindow.style.right = 'auto';
+                videoWindow.style.bottom = 'auto';
+            });
+
+            // 鼠标松开事件
+            document.addEventListener('mouseup', function () {
+                if (isDragging) {
+                    isDragging = false;
+                    dragBtn.style.cursor = 'grab';
+                    videoWindow.classList.remove('dragging');
+                }
+            });
+        }
+
+        // 键盘快捷键支持
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowLeft') {
+                previousSlide();
+            } else if (e.key === 'ArrowRight') {
+                nextSlide();
+            } else if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        // 点击模态框外部关闭
+        document.addEventListener('click', function (e) {
+            const modal = document.getElementById('uploadModal');
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+        // 拖拽上传功能
+        const uploadArea = document.getElementById('uploadArea');
+        if (uploadArea) {
+            uploadArea.addEventListener('dragover', function (e) {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', function (e) {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', function (e) {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+
+                const files = e.dataTransfer.files;
+                const fileInput = document.getElementById('fileInput');
+
+                // 模拟文件输入
+                const event = { target: { files: files, getAttribute: () => fileInput.getAttribute('data-type') } };
+                handleFileUpload(event);
+            });
+
+            // 点击上传区域触发文件选择（label已经处理了点击事件）
+            // uploadArea.addEventListener('click', function() {
+            //     document.getElementById('fileInput').click();
+            // });
+        }
+
+        // 预览功能
+        function togglePreview() {
+            const previewBtn = document.querySelector('.preview-btn');
+            const video = document.getElementById('lectureVideo');
+
+            if (!isPreviewMode) {
+                // 开始预览模式
+                isPreviewMode = true;
+                previewBtn.textContent = '停止预览';
+                previewBtn.classList.add('active');
+
+                // 检查是否有PPT和视频
+                const hasPPT = (pptImages.length > 0 || (isPdfMode && pdfDocument));
+                const hasVideo = video.src && video.src !== '';
+
+                if (!hasPPT && !hasVideo) {
+                    alert('请先上传PPT和视频文件');
+                    togglePreview(); // 重置状态
+                    return;
+                }
+
+                // 开始自动播放
+                startPreview();
+
+            } else {
+                // 停止预览模式
+                isPreviewMode = false;
+                previewBtn.textContent = '预览';
+                previewBtn.classList.remove('active');
+
+                // 停止自动播放
+                stopPreview();
+            }
+        }
+
+        // 开始预览
+        function startPreview() {
+            const video = document.getElementById('lectureVideo');
+            const videoWindow = document.getElementById('videoWindow');
+
+            // 确保视频窗口显示
+            if (video.src && video.src !== '') {
+                videoWindow.style.display = 'block';
+            }
+
+            // 如果有PPT内容，进入全屏预览
+            if ((isPdfMode && pdfDocument) || pptImages.length > 0) {
+                enterFullscreenPreview();
+            }
+
+            // 播放视频（独立运行，不影响PPT翻页）
+            if (video.src && video.src !== '') {
+                // 设置视频事件监听，确保视频操作不影响PPT
+                video.addEventListener('play', function () {
+                    // 视频播放时不影响PPT翻页
+                });
+
+                video.addEventListener('pause', function () {
+                    // 视频暂停时不影响PPT翻页
+                });
+
+                video.addEventListener('seeked', function () {
+                    // 视频快进/后退时不影响PPT翻页
+                });
+
+                video.play().catch(e => {
+                    console.log('视频自动播放失败:', e);
+                });
+            }
+
+            console.log('预览模式已启动 - 视频自动播放，PPT手动翻页');
+        }
+
+        // 停止预览
+        function stopPreview() {
+            const video = document.getElementById('lectureVideo');
+            const videoWindow = document.getElementById('videoWindow');
+
+            // 退出全屏预览
+            if ((isPdfMode && pdfDocument) || pptImages.length > 0) {
+                exitFullscreenPreview();
+            }
+
+            // 恢复视频窗口样式
+            videoWindow.classList.remove('fullscreen-preview');
+
+            // 暂停视频（但不影响PPT状态）
+            if (video.src && video.src !== '') {
+                video.pause();
+            }
+
+            console.log('预览模式已停止 - 视频已暂停');
+        }
+
+        // 进入全屏预览模式
+        function enterFullscreenPreview() {
+            const pptContainer = document.querySelector('.ppt-container');
+            const navbar = document.querySelector('.navbar');
+            const videoWindow = document.getElementById('videoWindow');
+
+            // 隐藏导航栏，但保持视频窗口可见
+            navbar.style.display = 'none';
+            // 确保视频窗口在全屏模式下可见并应用全屏样式
+            const video = document.getElementById('lectureVideo');
+            if (video.src && video.src !== '') {
+                videoWindow.style.display = 'block';
+                videoWindow.classList.add('fullscreen-preview');
+                // 设置初始位置和尺寸，避免被CSS覆盖
+                videoWindow.style.position = 'absolute';
+                videoWindow.style.top = '20px';
+                videoWindow.style.right = '20px';
+                videoWindow.style.width = '400px';
+                videoWindow.style.height = '250px';
+                videoWindow.style.resize = 'both';
+                videoWindow.style.overflow = 'hidden';
+                console.log('视频窗口已设置为全屏预览模式');
+                // 确保视频继续播放
+                if (video.paused) {
+                    video.play().catch(e => console.log('视频播放失败:', e));
+                }
+            } else {
+                console.log('没有视频文件，跳过视频窗口设置');
+            }
+
+            // 添加全屏类名，启用浮动控制栏
+            pptContainer.classList.add('fullscreen');
+
+            // 使用浏览器原生全屏API
+            if (!document.fullscreenElement) {
+                pptContainer.requestFullscreen?.().then(() => {
+                    console.log('已进入全屏预览模式');
+                    // 再次确保视频窗口显示
+                    if (video.src && video.src !== '') {
+                        videoWindow.style.display = 'block';
+                        videoWindow.classList.add('fullscreen-preview');
+                        // 重新初始化拖拽功能
+                        initVideoWindow();
+                    }
+                }).catch(err => {
+                    console.log('全屏请求失败:', err);
+                    // 如果全屏失败，回退到自定义全屏
+                    fallbackFullscreen();
+                });
+            }
+
+            // 添加退出全屏的快捷键
+            document.addEventListener('keydown', handleFullscreenKeydown);
+            document.addEventListener('fullscreenchange', handleFullscreenChange);
+        }
+
+        // 回退到自定义全屏模式
+        function fallbackFullscreen() {
+            const pptViewer = document.getElementById('pptViewer');
+            const pptContainer = document.querySelector('.ppt-container');
+            const videoWindow = document.getElementById('videoWindow');
+
+            // 设置PPT容器为全屏
+            pptContainer.style.position = 'fixed';
+            pptContainer.style.top = '0';
+            pptContainer.style.left = '0';
+            pptContainer.style.width = '100vw';
+            pptContainer.style.height = '100vh';
+            pptContainer.style.zIndex = '9999';
+            pptContainer.style.background = '#000';
+            pptContainer.style.padding = '0';
+            pptContainer.style.gap = '0';
+
+            // 添加全屏类名，启用浮动控制栏
+            pptContainer.classList.add('fullscreen');
+
+            // 设置PPT查看器为全屏
+            pptViewer.style.borderRadius = '0';
+            pptViewer.style.background = '#000';
+            pptViewer.style.boxShadow = 'none';
+
+            // 隐藏PPT控制栏
+            const pptControls = document.querySelector('.ppt-controls');
+            if (pptControls) {
+                pptControls.style.display = 'none';
+            }
+
+            // 确保视频窗口在全屏模式下可见并应用全屏样式
+            const video = document.getElementById('lectureVideo');
+            if (video.src && video.src !== '') {
+                videoWindow.style.display = 'block';
+                videoWindow.classList.add('fullscreen-preview');
+                // 确保视频窗口可以自由拖动和调整大小
+                videoWindow.style.position = 'absolute';
+                videoWindow.style.resize = 'both';
+                videoWindow.style.overflow = 'hidden';
+                // 重新初始化拖拽功能
+                initVideoWindow();
+                // 确保视频继续播放
+                if (video.paused) {
+                    video.play().catch(e => console.log('视频播放失败:', e));
+                }
+            }
+
+            console.log('已进入自定义全屏预览模式');
+        }
+
+        // 退出全屏预览模式
+        function exitFullscreenPreview() {
+            const pptContainer = document.querySelector('.ppt-container');
+            const navbar = document.querySelector('.navbar');
+            const videoWindow = document.getElementById('videoWindow');
+            const pptViewer = document.getElementById('pptViewer');
+
+            // 使用浏览器原生全屏API退出
+            if (document.fullscreenElement) {
+                document.exitFullscreen?.().then(() => {
+                    console.log('已退出全屏预览模式');
+                }).catch(err => {
+                    console.log('退出全屏失败:', err);
+                });
+            }
+
+            // 恢复导航栏
+            navbar.style.display = 'flex';
+
+            // 恢复视频窗口样式，但保持播放状态
+            const video = document.getElementById('lectureVideo');
+            if (video.src && video.src !== '') {
+                videoWindow.style.display = 'block';
+                videoWindow.classList.remove('fullscreen-preview');
+                // 保持视频播放状态，不暂停
+            }
+
+            // 移除全屏类名，恢复控制栏样式
+            pptContainer.classList.remove('fullscreen');
+
+            // 恢复PPT容器样式
+            pptContainer.style.position = '';
+            pptContainer.style.top = '';
+            pptContainer.style.left = '';
+            pptContainer.style.width = '';
+            pptContainer.style.height = '';
+            pptContainer.style.zIndex = '';
+            pptContainer.style.background = '';
+            pptContainer.style.padding = '';
+            pptContainer.style.gap = '';
+
+            // 恢复PPT查看器样式
+            pptViewer.style.borderRadius = '';
+            pptViewer.style.background = '';
+            pptViewer.style.boxShadow = '';
+
+            // 恢复PDF容器样式
+            const canvasContainer = pptViewer.querySelector('.pdf-canvas-container');
+            if (canvasContainer) {
+                canvasContainer.style.overflow = 'hidden';
+                canvasContainer.style.width = '100%';
+                canvasContainer.style.height = '100%';
+                canvasContainer.style.position = 'relative';
+                canvasContainer.style.top = '';
+                canvasContainer.style.left = '';
+                canvasContainer.style.alignItems = 'center';
+                canvasContainer.style.justifyContent = 'center';
+                canvasContainer.style.transform = '';
+
+                // 恢复canvas样式
+                const canvas = canvasContainer.querySelector('canvas');
+                if (canvas) {
+                    canvas.style.width = '';
+                    canvas.style.height = '';
+                    canvas.style.objectFit = '';
+                    canvas.style.maxWidth = '';
+                    canvas.style.maxHeight = '';
+                    canvas.style.position = '';
+                    canvas.style.top = '';
+                    canvas.style.left = '';
+                    canvas.style.transform = '';
+                    canvas.style.opacity = '';
+                    canvas.style.transition = '';
+                }
+            }
+
+            // 显示PPT控制栏
+            const pptControls = document.querySelector('.ppt-controls');
+            if (pptControls) {
+                pptControls.style.display = 'flex';
+            }
+
+            // 移除全屏快捷键监听
+            document.removeEventListener('keydown', handleFullscreenKeydown);
+            document.removeEventListener('fullscreenchange', handleFullscreenChange);
+
+            // 重新渲染PDF以确保正确显示
+            if (isPdfMode && pdfDocument) {
+                setTimeout(() => {
+                    displayPDF();
+                }, 100);
+            }
+
+            console.log('已退出全屏预览模式');
+        }
+
+        // 全屏模式下的键盘事件处理
+        function handleFullscreenKeydown(e) {
+            if (e.key === 'Escape' || e.key === 'F11') {
+                // ESC键或F11键退出全屏
+                if (isPreviewMode) {
+                    togglePreview();
+                }
+            }
+        }
+
+        // 处理全屏状态变化
+        function handleFullscreenChange() {
+            if (!document.fullscreenElement) {
+                // 退出全屏时恢复界面
+                const pptContainer = document.querySelector('.ppt-container');
+                const navbar = document.querySelector('.navbar');
+                const videoWindow = document.getElementById('videoWindow');
+                const pptControls = document.querySelector('.ppt-controls');
+
+                // 恢复导航栏
+                navbar.style.display = 'flex';
+
+                // 恢复视频窗口样式，但保持播放状态
+                const video = document.getElementById('lectureVideo');
+                if (video.src && video.src !== '') {
+                    videoWindow.style.display = 'block';
+                    videoWindow.classList.remove('fullscreen-preview');
+                    // 保持视频播放状态，不暂停
+                }
+
+                // 移除全屏类名，恢复控制栏样式
+                pptContainer.classList.remove('fullscreen');
+
+                // 恢复PPT控制栏
+                if (pptControls) {
+                    pptControls.style.display = 'flex';
+                }
+
+                if (isPreviewMode) {
+                    // 如果仍在预览模式，停止预览
+                    togglePreview();
+                }
+            }
+        }
+
+        // 切换全屏预览模式
+        function toggleFullscreenPreview() {
+            const pptContainer = document.querySelector('.ppt-container');
+
+            if (!document.fullscreenElement) {
+                // 进入全屏
+                const navbar = document.querySelector('.navbar');
+                const videoWindow = document.getElementById('videoWindow');
+
+                // 隐藏导航栏，但保持视频窗口可见
+                navbar.style.display = 'none';
+                // 确保视频窗口在全屏模式下可见并应用全屏样式
+                const video = document.getElementById('lectureVideo');
+                if (video.src && video.src !== '') {
+                    videoWindow.style.display = 'block';
+                    videoWindow.classList.add('fullscreen-preview');
+                    // 确保视频窗口可以自由拖动和调整大小
+                    videoWindow.style.position = 'absolute';
+                    videoWindow.style.resize = 'both';
+                    videoWindow.style.overflow = 'hidden';
+                    // 重新初始化拖拽功能
+                    initVideoWindow();
+                    // 确保视频继续播放
+                    if (video.paused) {
+                        video.play().catch(e => console.log('视频播放失败:', e));
+                    }
+                }
+
+                // 添加全屏类名，启用浮动控制栏
+                pptContainer.classList.add('fullscreen');
+
+                // 隐藏PPT控制栏
+                const pptControls = document.querySelector('.ppt-controls');
+                if (pptControls) {
+                    pptControls.style.display = 'none';
+                }
+
+                // 使用浏览器原生全屏API
+                pptContainer.requestFullscreen?.().then(() => {
+                    console.log('已进入全屏预览模式');
+                }).catch(err => {
+                    console.log('全屏请求失败:', err);
+                    // 如果全屏失败，回退到自定义全屏
+                    fallbackFullscreen();
+                });
+
+                // 添加退出全屏的快捷键
+                document.addEventListener('keydown', handleFullscreenKeydown);
+                document.addEventListener('fullscreenchange', handleFullscreenChange);
+
+            } else {
+                // 退出全屏
+                document.exitFullscreen?.().then(() => {
+                    console.log('已退出全屏预览模式');
+                }).catch(err => {
+                    console.log('退出全屏失败:', err);
+                });
+
+                // 恢复导航栏
+                const navbar = document.querySelector('.navbar');
+                navbar.style.display = 'flex';
+
+                // 恢复视频窗口样式，但保持播放状态
+                const videoWindow = document.getElementById('videoWindow');
+                const video = document.getElementById('lectureVideo');
+                if (video.src && video.src !== '') {
+                    videoWindow.style.display = 'block';
+                    videoWindow.classList.remove('fullscreen-preview');
+                    // 保持视频播放状态，不暂停
+                }
+
+                // 移除全屏类名，恢复控制栏样式
+                pptContainer.classList.remove('fullscreen');
+
+                // 恢复PPT控制栏
+                const pptControls = document.querySelector('.ppt-controls');
+                if (pptControls) {
+                    pptControls.style.display = 'flex';
+                }
+
+                // 恢复PPT容器样式
+                const pptViewer = document.getElementById('pptViewer');
+                pptContainer.style.position = '';
+                pptContainer.style.top = '';
+                pptContainer.style.left = '';
+                pptContainer.style.width = '';
+                pptContainer.style.height = '';
+                pptContainer.style.zIndex = '';
+                pptContainer.style.background = '';
+                pptContainer.style.padding = '';
+                pptContainer.style.gap = '';
+
+                // 恢复PPT查看器样式
+                pptViewer.style.borderRadius = '';
+                pptViewer.style.background = '';
+                pptViewer.style.boxShadow = '';
+
+                // 移除全屏快捷键监听
+                document.removeEventListener('keydown', handleFullscreenKeydown);
+                document.removeEventListener('fullscreenchange', handleFullscreenChange);
+            }
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', function () {
+            // 初始化视频窗口拖拽功能
+            initVideoWindow();
+
+            // 添加窗口大小变化监听，在预览模式下重新渲染PDF
+            window.addEventListener('resize', function () {
+                if (isPreviewMode && isPdfMode && pdfDocument) {
+                    // 延迟执行，避免频繁重绘
+                    clearTimeout(window.resizeTimeout);
+                    window.resizeTimeout = setTimeout(() => {
+                        displayPDF();
+                    }, 200);
+                }
+            });
+        }); 
+    </script>
+</body>
+
+</html>
